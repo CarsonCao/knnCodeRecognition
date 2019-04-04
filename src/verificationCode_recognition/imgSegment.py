@@ -81,9 +81,15 @@ def getROI(img):
     #腐蚀
     kernel = np.ones((2,1),np.uint8)
     erosion = cv2.erode(img_thre, kernel, iterations = 3)
-    #计算像素x轴投影
-    hist = calXProjection(erosion,True)
     
+     #垂直方向膨胀
+    kernel = np.ones((2,2),np.uint8)
+    dilation = cv2.dilate(erosion,kernel,iterations = 1)
+    
+    #计算像素x轴投影
+    hist = calXProjection(dilation,True)
+    
+    #根据投影判断开始和结束的位置
     start_pos = 0
     end_pos = width - 1
     for i in range(width - 4):
@@ -95,25 +101,21 @@ def getROI(img):
             end_pos = width - i
             break
     
-    #垂直方向膨胀
-    kernel3 = np.ones((2,2),np.uint8)
-    dilation = cv2.dilate(erosion,kernel3,iterations = 1)
-    
     img_ROI = dilation[1:height,start_pos:end_pos]
     return img_ROI
  
     
-    
+# 计算字符边界，boundSize字符个数
 def charXBoundary(img,boundSize = 5):
     height,width = img.shape
-    partWidth = round((width *1.0) / (boundSize *1.0))
+    partWidth = round((width *1.0) / (boundSize *1.0))      # 单个字符初始宽度
     bounds = np.zeros([boundSize+1,height],np.uint16)       # 字符边界
-    energy_bounds = np.zeros([boundSize],np.uint16)  # 计算能量的边界，用于计算最终的字符边界
+    energy_bounds = np.zeros([boundSize],np.uint16)         # 计算能量的边界，用于计算最终的字符边界
     accu_energys = np.zeros([height, width], np.uint32)     # 能量累加矩阵
-    accu_routes = np.zeros([height, width], np.int8)       # 计算能量累加的路线
+    accu_routes = np.zeros([height, width], np.int8)        # 计算能量累加的路线
     
-    #初始化两个边界
-    size = boundSize/2
+    #初始化字符的左右边界，（假设字符等宽，以中间字符左右对称计算）
+    size = int(boundSize/2)
     if boundSize %2 == 0:
         size -= 1
     for i in range(size+1):
@@ -123,11 +125,12 @@ def charXBoundary(img,boundSize = 5):
     if boundSize%2 == 0:
         for j in range(height):
             bounds[size+1][j] = round(width/2)
-            
+
+    # 累加能量左右边界初始化（左右边界初始化为字符的中心） 
     for i in range(boundSize):
         energy_bounds[i] = round((bounds[i][0] + bounds[i+1][0])/2)
     
-    #计算累加能量
+    #计算累加能量矩阵
     for i in range(energy_bounds[0],energy_bounds[boundSize-1]):
         accu_energys[0][i] = img[0][i]
         
@@ -157,7 +160,7 @@ def charXBoundary(img,boundSize = 5):
                         accu_energys[i][k] = img[i][k] + accu_energys[i-1][k+1]
                         accu_routes[i][k] = 1
     
-    #寻找能量最大的字符边界
+    #寻找能量最小的字符边界
     for j in range(boundSize - 1):
         minInt = height*255
         minLoc = energy_bounds[j]
@@ -215,13 +218,14 @@ def charCropping(img):
     return img_res
     
     
-    
-def charSegment(img,boundSize,id):
+## 字符切割的主函数 
+def charSegment(img,boundSize):
     height,width = img.shape
     #能量累加法确定图像各个字符之间的边界
     bounds = charXBoundary(img,boundSize)
-    
-    #print "%d,%d" % (height,width)
+    vector_sets = np.zeros([boundSize,1024],np.float32)
+
+    #字符中间边界x轴上的最大最小值
     max_min_Bounds = np.zeros([boundSize-1,2],np.uint16)
     for j in range(boundSize - 1):
         max_min_Bounds[j][1] = width
@@ -230,7 +234,7 @@ def charSegment(img,boundSize,id):
                 max_min_Bounds[j][0] = bounds[j+1][i]
             if bounds[j+1][i] < max_min_Bounds[j][1]:
                 max_min_Bounds[j][1] = bounds[j+1][i]
-                
+             
     for j in range(boundSize):
         w = 0
         start_loc = 0
@@ -245,7 +249,7 @@ def charSegment(img,boundSize,id):
             
         char_img = np.zeros([height,w],np.uint8)
         for m in range(height):
-            #print "j:%d, m:%d, start_loc:%d" % (j,m,start_loc)
+            #print("j:%d, m:%d, start_loc:%d" % (j,m,start_loc))
             for n in range(w):
                 ori_loc = start_loc + n
                 if ori_loc < bounds[j+1][m] and ori_loc >= bounds[j][m]:
@@ -256,18 +260,12 @@ def charSegment(img,boundSize,id):
         char_img_resize = cv2.resize(char_img_crop,(22, 32), interpolation = cv2.INTER_CUBIC)
         res_img = np.zeros([32,32], np.uint8)
         res_img[0:32,5:27] = char_img_resize
-        cv2.imwrite("E:\\python_space\\segments\\"+str(id)+"_"+str(j)+".jpg", res_img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])  
-    
-
-    
-if __name__ == '__main__':
-    for i in range(0,988):
-        file = "E:\\python_space\\images\\"+str(i)+".jpg"
-        if not os.path.exists(file):
-            continue
-            
-        img = cv2.imread(file,0)  #直接读取灰度图片      
-        roi = getROI(img)
-        cv2.imwrite("E:\\python_space\\ROI\\"+str(i)+"_ROI.jpg", roi, [int(cv2.IMWRITE_JPEG_QUALITY), 100])  
-        charSegment(roi,5,i)
-
+        
+        for x in range(32):
+            for y in range(32):
+                if res_img[x,y] > 200:
+                    vector_sets[j, x * 32 + y] = 1.0
+                else:
+                    vector_sets[j, x * 32 + y] = 0.0
+  
+    return vector_sets  

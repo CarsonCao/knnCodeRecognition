@@ -38,7 +38,7 @@ def kNNClassify(input_set,data_sets,data_labels,k=10):
     for i in range(k):
         label = data_labels[sort_distance_index[i]]
         pre_labels[label] = pre_labels.get(label,0) + 1
-    sorted_pre_labels = sorted(pre_labels.iteritems(),key=lambda x:x[1],reverse=True)
+    sorted_pre_labels = sorted(pre_labels.items(),key=lambda x:x[1],reverse=True)
     
     return sorted_pre_labels[0][0]
   
@@ -57,7 +57,7 @@ def  img2vector(img):
     return imgVector  
   
 # load dataSet  
-def loadDataSet(pic_path='E:\\python_space\\segments\\train_pic'):  
+def loadDataSet(pic_path='../../images/segments/train_pic'):  
     # 训练集
     training_labels = []
     dirList =  os.listdir(pic_path)  
@@ -90,22 +90,3 @@ def score(pred_labels,test_labels):
     test = np.array(test_labels)
     res = (pred==test).astype(int)
     return res.sum()*1.0/res.shape[0]
-
-# test hand writing class
-if __name__ == '__main__':  
-    print("获取训练集")
-    traininig_sets , traininig_labels= loadDataSet('E:\\python_space\\segments\\train_pic')
-    print("获取测试集")
-    test_sets , test_labels = loadDataSet('E:\\python_space\\segments\\test_pic')
-    pred_labels = []
-    print("预测中...")
-    
-    i = 0
-    for test in test_sets:
-        pred_tag = kNNClassify(test,traininig_sets,traininig_labels,k=5)
-        pred_labels.append(pred_tag)
-        #print '预测：%s,实际：%s' %(pred_tag,test_labels[i])
-        i += 1
-        
-    print ("准确率为:")
-    print(score(pred_labels,test_labels))  
